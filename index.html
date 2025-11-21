@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Todo App FastAPI</title>
+
+  <style>
+    body { 
+      background:#111; 
+      color:white; 
+      font-family:Arial; 
+      padding:20px; 
+    }
+    input {
+      padding:10px;
+      width:70%;
+      border-radius:8px;
+      border:none;
+    }
+    button {
+      padding:10px 15px;
+      background:#4caf50;
+      border:none;
+      color:white;
+      border-radius:8px;
+      cursor:pointer;
+    }
+    li {
+      background:#222;
+      padding:10px;
+      margin-top:10px;
+      border-radius:8px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+    .delete {
+      background:red;
+      border:none;
+      padding:5px 10px;
+      border-radius:5px;
+      color:white;
+      cursor:pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Todo List</h1>
+
+<input id="todoInput" placeholder="Nuova attività..." />
+<button onclick="addTodo()">Aggiungi</button>
+
+<ul id="todoList"></ul>
+
+<script>
+const API = "http://127.0.0.1:8000";
+
+// Carica lista
+async function loadTodos() {
+  const res = await fetch(`${API}/todos`);
+  const todos = await res.json();
+
+  const list = document.getElementById("todoList");
+  list.innerHTML = "";
+
+  todos.forEach(t => {
+    list.innerHTML += `
+  <li>
+    <span>${t.title}</span>
+    <div>
+      <button onclick="editTodo(${t.id}, '${t.title.replace(/'/g, "\\'")}')">EDIT</button>
+      <button class="delete" onclick="deleteTodo(${t.id})">X</button>
+    </div>
+  </li>`;
+  });
+}
+
+// Aggiungi
+async function addTodo() {
+  const title = document.getElementById("todoInput").value;
+  if (!title) return;
+
+  await fetch(`${API}/todos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({title})
+  });
+
+  document.getElementById("todoInput").value = "";
+  loadTodos();
+}
+
+// Elimina
+async function deleteTodo(id) {
+  await fetch(`${API}/todos/${id}`, { method: "DELETE" });
+  loadTodos();
+}
+
+loadTodos();
+
+async function editTodo(id, oldTitle) {
+  const newTitle = prompt("Modifica la todo:", oldTitle);
+
+  if (!newTitle || newTitle.trim() === "") return;
+
+  await fetch(`${API}/todos/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: newTitle })
+  });
+
+  loadTodos();
+}
+
+</script>
+
+</body>
+</html>
