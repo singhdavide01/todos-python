@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Todo App FastAPI + Login/Register</title>
+
+  <style>
+    body { 
+      background:#111; 
+      color:white; 
+      font-family:Arial; 
+      padding:20px; 
+    }
+    input {
+      padding:10px;
+      width:70%;
+      border-radius:8px;
+      border:none;
+      margin:5px 0;
+    }
+    button {
+      padding:10px 15px;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+    }
+    button:hover { opacity:0.9; }
+    .btn-green { background:#4caf50; color:white; }
+    .btn-red { background:#f44336; color:white; }
+    li {
+      background:#222;
+      padding:10px;
+      margin-top:10px;
+      border-radius:8px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+    }
+    .delete { background:red; border:none; padding:5px 10px; border-radius:5px; color:white; cursor:pointer; }
+    #loginSection, #registerSection, #todoSection { margin-bottom:20px; }
+    .small { font-size:0.9rem; color:#bbb; margin-top:6px; }
+  </style>
+</head>
+<body>
+
+<h1>Todo App FastAPI</h1>
+
+<div id="registerSection">
+  <h2>Register</h2>
+  <input id="reg-username" placeholder="Username">
+  <input id="reg-email" placeholder="Email">
+  <input id="reg-fullname" placeholder="Full Name">
+  <input type="password" id="reg-password" placeholder="Password">
+  <button class="btn-green" onclick="register()">Register</button>
+  <div id="regMsg" class="small"></div>
+</div>
+
+<div id="loginSection">
+  <h2>Login</h2>
+  <input id="username" placeholder="Username" value="tim">
+  <input type="password" id="password" placeholder="Password" value="secret">
+  <button class="btn-green" onclick="login()">Login</button>
+  <div id="loginMsg" class="small"></div>
+</div>
+
+<div id="todoSection" style="display:none;">
+  <h2>Todo List</h2>
+  <input id="todoInput" placeholder="Nuova attività..." />
+  <button class="btn-green" onclick="addTodo()">Aggiungi</button>
+  <ul id="todoList"></ul>
+  <button class="btn-red" onclick="logout()">Logout</button>
+</div>
+
+<script>
+const API = "http://127.0.0.1:8000";
+let token = "";
+
+// helper: show message
+function showMsg(id, msg) {
+  document.getElementById(id).textContent = msg;
+}
+
+// REGISTER
+async function register() {
+  const username = document.getElementById("reg-username").value.trim();
+  const email = document.getElementById("reg-email").value.trim();
+  const full_name = document.getElementById("reg-fullname").value.trim();
+  const password = document.getElementById("reg-password").value;
+
+  if(!username || !email || !password) {
+    showMsg("regMsg", "Compila tutti i campi obbligatori!");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API}/register`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username, email, full_name, password})
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.detail || "Errore registrazione");
+
+    showMsg("regMsg", `Registrazione riuscita! Utente: ${data.username}`);
+    // pulisce campi
+    document.getElementById("reg-username").value = "";
+    document.getElementById("reg-email").value = "";
+    document.getElementById("reg-fullname").value = "";
+    document.getElementById("reg-password").value = "";
+
+  } catch(err) {
+    showMsg("regMsg", err.message);
+  }
+}
+
+// LOGIN
+async function login() {
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+
+  const formData = new URLSearchParams();
+  formData.append("username", username);
+  formData.append("password", password);
+
+  try {
+    const res = await fetch(`${API}/token`, {
+      method: "POST",
+      body: formData,
+      headers: { "Content-Type": "application/x-www-form-urlencoded" }
+    });
+
+    if(!res.ok) {
+      const err = await res.json().catch(()=>null);
+      throw new Error(err?.detail || "Login fallito");
+    }
+
+    const data = await res.json();
+    token = data.access_token;
+    showMsg("loginMsg", "Login riuscito!");
+
+    document.getElementById("loginSection").style.display = "none";
+    document.getElementById("registerSection").style.display = "none";
+    document.getElementById("todoSection").style.display = "block";
+
+    loadTodos();
+
+  } catch(err) {
+    showMsg("loginMsg", err.message || err);
+  }
+}
+
+// LOGOUT
+function logout() {
+  token = "";
+  document.getElementById("loginSection").style.display = "block";
+  document.getElementById("registerSection").style.display = "block";
+  document.getElementById("todoSection").style.display = "none";
+  document.getElementById("loginMsg").textContent = "";
+  document.getElementById("regMsg").textContent = "";
+  document.getElementById("todoList").innerHTML = "";
+}
+
+// LOAD TODOS
+async function loadTodos() {
+  try {
+    const res = await fetch(`${API}/todos`, { headers: { "Authorization": `Bearer ${token}` }});
+    if(!res.ok) throw new Error("Errore caricamento todo");
+    const todos = await res.json();
+
+    const list = document.getElementById("todoList");
+    list.innerHTML = "";
+
+    todos.forEach(t => {
+      list.innerHTML += `
+        <li id="li-${t.id}">
+          <span>${escapeHtml(t.title)}</span>
+          <div>
+            <button onclick="editTodo(${t.id}, '${t.title.replace(/'/g,"\\'").replace(/"/g,'\\"')}')">EDIT</button>
+            <button class="delete" onclick="deleteTodo(${t.id})">X</button>
+          </div>
+        </li>`;
+    });
+
+  } catch(err) {
+    console.error(err);
+    showMsg("loginMsg", err.message || err);
+  }
+}
+
+// ADD TODO
+async function addTodo() {
+  const title = document.getElementById("todoInput").value.trim();
+  if(!title) return;
+
+  try {
+    const res = await fetch(`${API}/todos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({title})
+    });
+    if(!res.ok) {
+      const err = await res.json().catch(()=>null);
+      throw new Error(err?.detail || "Errore aggiunta");
+    }
+    document.getElementById("todoInput").value = "";
+    loadTodos();
+  } catch(err) {
+    showMsg("loginMsg", err.message || err);
+  }
+}
+
+// DELETE TODO
+async function deleteTodo(id) {
+  try {
+    const res = await fetch(`${API}/todos/${id}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` }});
+    if(!res.ok) {
+      const err = await res.json().catch(()=>null);
+      throw new Error(err?.detail || "Errore eliminazione");
+    }
+    loadTodos();
+  } catch(err) {
+    showMsg("loginMsg", err.message || err);
+  }
+}
+
+// EDIT TODO
+async function editTodo(id, oldTitle) {
+  const newTitle = prompt("Modifica la todo:", oldTitle);
+  if(!newTitle || newTitle.trim()==="") return;
+
+  try {
+    const res = await fetch(`${API}/todos/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({title:newTitle})
+    });
+    if(!res.ok) {
+      const err = await res.json().catch(()=>null);
+      throw new Error(err?.detail || "Errore aggiornamento");
+    }
+    loadTodos();
+  } catch(err) {
+    showMsg("loginMsg", err.message || err);
+  }
+}
+
+// escape HTML
+function escapeHtml(text) {
+  const map = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'};
+  return String(text).replace(/[&<>"']/g, m => map[m]);
+}
+</script>
+
+</body>
+</html>
